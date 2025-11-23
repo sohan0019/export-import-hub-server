@@ -1,0 +1,146 @@
+const express = require('express')
+const cors = require('cors')
+const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
+const app = express()
+const port = 3000
+
+app.use(cors())
+app.use(express.json())
+
+//Firebase
+const admin = require("firebase-admin");
+
+const serviceAccount = require("./import-export-hub-firebase-adminsdk.json");
+
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount)
+});
+
+//Dotenv
+require('dotenv').config()
+
+//MongoDB
+const uri = `mongodb+srv://${process.env.DB_USERNAME}:${process.env.DB_PASSWORD}@sohansdb.zvnqwhl.mongodb.net/?appName=SohansDB`;
+
+// Create a MongoClient with a MongoClientOptions object to set the Stable API version
+const client = new MongoClient(uri, {
+  serverApi: {
+    version: ServerApiVersion.v1,
+    strict: true,
+    deprecationErrors: true,
+  }
+});
+
+
+
+const verifyTokenMiddleware = async (req, res, next) => {
+  const authorization = req.headers.authorization;
+  
+  if (!authorization) {
+    return res.status(401).send({
+      message: "Unauthorized Access, Token not Found."
+    })
+  }
+
+  const token = authorization.split(' ')[1]
+  // console.log(token);
+
+  try{
+    const decode = await admin.auth().verifyIdToken(token);
+    console.log(decode);
+    next();
+  }
+  catch (error){
+    res.status(401).send({
+      message: "Unauthorized Access."
+    })
+  }
+}
+
+
+async function run() {
+  try {
+    await client.connect();
+
+    const db = client.db('export-import-hub')
+    const productsCollection = db.collection('products')
+    const importsCollection = db.collection('imports')
+
+    app.get('/products', async (req,res) => {
+      const result = await productsCollection.find().toArray();
+      res.send(result);
+    })
+
+    app.get('/latest-products', async (req, res) => {
+      const cursor = productsCollection.find().sort({created_at: -1}).limit(6);
+      const result = await cursor.toArray();
+      res.send(result);
+    })
+
+    app.get(`/productDetails/:id`, async (req, res) => {
+      const id = req.params.id;
+      const query = {_id: new ObjectId(id)};
+      const result = await productsCollection.findOne(query);
+      res.send(result);
+    }) 
+
+    app.get('/search', async (req, res) => {
+      const searchedText = req.query.search;
+      const result = await productsCollection.find({productName: {$regex: searchedText, $options: "i"}}).toArray();
+      res.send(result);
+    })
+
+    app.get(`/product/:id`, async (req, res) => {
+      const {id} = req.params;
+      const result = await productsCollection.findOne({_id: new ObjectId(id)});
+      res.send(result);
+    })
+
+    app.get('/myImports', verifyTokenMiddleware, async (req, res) => {
+      const email = req.query.email;
+      const result = await importsCollection.find({imported_by: email}).toArray();
+      res.send(result);
+    })
+
+    app.post(`/product/import/:id`, async (req, res) => {
+      const id = req.params.id;
+      const importData = req.body;
+      const quantity = Number(importData.quantity);
+      const result = await importsCollection.insertOne(importData);
+
+      const filter = {_id: new ObjectId(id)}
+      const update = {
+        $inc: {
+          availableQuantity: - quantity
+        }
+      }
+      const newImpQuantity = await productsCollection.updateOne(filter, update);
+      res.send({result, newImpQuantity});
+    })
+
+    app.post('/products', verifyTokenMiddleware, async (req, res) => {
+      const query = req.body;
+      const result = await productsCollection.insertOne(query);
+      res.send({
+        success: true,
+        result,
+      })
+    })
+
+
+    await client.db("admin").command({ ping: 1 });
+    console.log("Pinged your deployment. You successfully connected to MongoDB!");
+  } finally {
+    // await client.close();
+  }
+}
+run().catch(console.dir);
+
+
+app.get('/', (req, res) => {
+  res.send('Hello World!')
+})
+
+app.listen(port, () => {
+  console.log(`Example app listening on port ${port}`)
+})
