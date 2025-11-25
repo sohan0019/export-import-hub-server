@@ -48,6 +48,7 @@ const verifyTokenMiddleware = async (req, res, next) => {
   try {
     const decode = await admin.auth().verifyIdToken(token);
     console.log(decode);
+    req.decodedUser = decode;
     next();
   }
   catch (error) {
@@ -65,6 +66,7 @@ async function run() {
     const db = client.db('export-import-hub')
     const productsCollection = db.collection('products')
     const importsCollection = db.collection('imports')
+    const usersCollection = db.collection('users')
 
     app.get('/products', async (req, res) => {
       const result = await productsCollection.find().toArray();
@@ -102,6 +104,12 @@ async function run() {
       res.send(result);
     })
 
+    app.get('/myExports', verifyTokenMiddleware, async(req, res) => {
+      const email = req.query.email;
+      const result = await productsCollection.find({created_by: email}).toArray();
+      res.send(result);
+    })
+
     app.post(`/product/import/:id`, async (req, res) => {
       const id = req.params.id;
       const importData = req.body;
@@ -120,6 +128,10 @@ async function run() {
 
     app.post('/products', verifyTokenMiddleware, async (req, res) => {
       const body = req.body;
+
+      const createdByEmail = req.decodedUser.email;
+      const productToInsert = {...body, created_by: createdByEmail};
+
       if (
         isNaN(body.availableQuantity) ||
         isNaN(body.price) ||
@@ -131,7 +143,7 @@ async function run() {
       }
 
       try {
-        const result = await productsCollection.insertOne(body);
+        const result = await productsCollection.insertOne(productToInsert);
         res.send({
           success: true,
           message: "Product added successfully",
@@ -150,6 +162,41 @@ async function run() {
       const id = req.params.id;
       const result = await importsCollection.deleteOne({ _id: new ObjectId(id) })
       res.send(result)
+    })
+
+    app.delete('/exportProduct/:id', verifyTokenMiddleware, async (req, res) => {
+      const id = req.params.id;
+      const result = await productsCollection.deleteOne({ _id: new ObjectId(id) })
+      res.send(result)
+    })
+
+
+    app.post('/users', async (req, res) => {
+      const newUser = req.body;
+
+      const email = req.body.email;
+      const query = { email: email };
+      const existingUser = await usersCollection.findOne(query);
+      if (existingUser) {
+        res.send({ message: 'User Already Exist.' });
+      } else {
+        const result = await usersCollection.insertOne(newUser);
+        res.send(result);
+      }
+    })
+
+    app.put('/exportProduct/:id', verifyTokenMiddleware, async (req, res) => {
+      const {id} = req.params
+      const data = req.body
+      // console.log({id, data});
+      const update = {
+        $set: data
+      }
+      const result = await productsCollection.updateOne({_id: new ObjectId(id)}, update)
+      res.send({
+        success: true,
+        result 
+      })
     })
 
 
