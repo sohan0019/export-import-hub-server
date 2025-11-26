@@ -47,7 +47,7 @@ const verifyTokenMiddleware = async (req, res, next) => {
 
   try {
     const decode = await admin.auth().verifyIdToken(token);
-    console.log(decode);
+    // console.log(decode);
     req.decodedUser = decode;
     next();
   }
@@ -92,7 +92,7 @@ async function run() {
       res.send(result);
     })
 
-    app.get(`/product/:id`, async (req, res) => {
+    app.get(`/product/:id`, verifyTokenMiddleware, async (req, res) => {
       const { id } = req.params;
       const result = await productsCollection.findOne({ _id: new ObjectId(id) });
       res.send(result);
@@ -110,7 +110,7 @@ async function run() {
       res.send(result);
     })
 
-    app.post(`/product/import/:id`, async (req, res) => {
+    app.post(`/product/import/:id`, verifyTokenMiddleware, async (req, res) => {
       const id = req.params.id;
       const importData = req.body;
       const quantity = Number(importData.quantity);
@@ -126,7 +126,7 @@ async function run() {
       res.send({ result, newImpQuantity });
     })
 
-    app.post('/products', verifyTokenMiddleware, async (req, res) => {
+    app.post('/products',  async (req, res) => {
       const body = req.body;
 
       const createdByEmail = req.decodedUser.email;
@@ -199,8 +199,8 @@ async function run() {
       })
     })
 
-    await client.db("admin").command({ ping: 1 });
-    console.log("Pinged your deployment. You successfully connected to MongoDB!");
+    // await client.db("admin").command({ ping: 1 });
+    // console.log("Pinged your deployment. You successfully connected to MongoDB!");
   } finally {
     // await client.close();
   }
@@ -213,5 +213,5 @@ app.get('/', (req, res) => {
 })
 
 app.listen(port, () => {
-  console.log(`Example app listening on port ${port}`)
+  console.log(`App listening on port ${port}`)
 })
