@@ -126,7 +126,7 @@ async function run() {
       res.send({ result, newImpQuantity });
     })
 
-    app.post('/products',  async (req, res) => {
+    app.post('/products', verifyTokenMiddleware, async (req, res) => {
       const body = req.body;
 
       const createdByEmail = req.decodedUser.email;
